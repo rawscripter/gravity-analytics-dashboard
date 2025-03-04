@@ -709,172 +709,16 @@ jQuery(document).ready(function($) {
         printWindow.document.close();
     });
 
-    function renderChart(data) {
-        // Ensure we have valid data
-        if (!data || !data.daily_stats) {
-            console.error('Invalid data format for chart:', data);
-            return;
-        }
-
-        const labels = Object.keys(data.daily_stats);
-        const counts = Object.values(data.daily_stats);
-
-        const ctx = document.getElementById('gad-chart').getContext('2d');
-
-        // Destroy previous instance if it exists.
-        if (chartInstance) {
-            chartInstance.destroy();
-        }
-
-        // Create a gradient background for the area under the line
-        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-        gradient.addColorStop(0, 'rgba(52, 168, 83, 0.3)');
-        gradient.addColorStop(1, 'rgba(52, 168, 83, 0.05)');
-
-        // Chart configuration based on chart type
-        let chartConfig = {
-            type: 'line', // Default for area chart (line with fill: true)
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Submissions per Day',
-                    data: counts,
-                    borderColor: '#34a853',
-                    borderWidth: 3,
-                    backgroundColor: gradient,
-                    tension: 0.3,
-                    pointBackgroundColor: '#34a853',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
-                    pointRadius: 5,
-                    pointHoverRadius: 7,
-                    pointHoverBackgroundColor: '#34a853',
-                    pointHoverBorderColor: '#fff',
-                    pointHoverBorderWidth: 2,
-                    fill: true // Default to true for area chart
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    intersect: false,
-                    mode: 'index'
-                },
-                scales: {
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Date',
-                            font: {
-                                weight: 'bold'
-                            }
-                        },
-                        grid: {
-                            display: true,
-                            color: 'rgba(0, 0, 0, 0.05)'
-                        },
-                        ticks: {
-                            font: {
-                                size: 12
-                            }
-                        }
-                    },
-                    y: {
-                        title: {
-                            display: true,
-                            text: 'Number of Submissions',
-                            font: {
-                                weight: 'bold'
-                            }
-                        },
-                        beginAtZero: true,
-                        grid: {
-                            display: true,
-                            color: 'rgba(0, 0, 0, 0.05)'
-                        },
-                        ticks: {
-                            precision: 0,
-                            font: {
-                                size: 12
-                            }
-                        }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    tooltip: {
-                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                        titleFont: {
-                            size: 14,
-                            weight: 'bold'
-                        },
-                        bodyFont: {
-                            size: 14
-                        },
-                        padding: 12,
-                        displayColors: false,
-                        callbacks: {
-                            label: function(context) {
-                                return context.parsed.y + ' submission' + (context.parsed.y !== 1 ? 's' : '');
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        // Adjust configuration based on selected chart type
-        switch (currentChartType) {
-            case 'line':
-                chartConfig.type = 'line';
-                chartConfig.data.datasets[0].fill = false;
-                break;
-                
-            case 'bar':
-                chartConfig.type = 'bar';
-                chartConfig.data.datasets[0].backgroundColor = '#34a853';
-                chartConfig.data.datasets[0].borderColor = '#34a853';
-                chartConfig.data.datasets[0].borderWidth = 1;
-                chartConfig.data.datasets[0].borderRadius = 4;
-                chartConfig.data.datasets[0].maxBarThickness = 50;
-                // Remove line-specific properties
-                delete chartConfig.data.datasets[0].tension;
-                delete chartConfig.data.datasets[0].pointBackgroundColor;
-                delete chartConfig.data.datasets[0].pointBorderColor;
-                delete chartConfig.data.datasets[0].pointBorderWidth;
-                delete chartConfig.data.datasets[0].pointRadius;
-                delete chartConfig.data.datasets[0].pointHoverRadius;
-                delete chartConfig.data.datasets[0].pointHoverBackgroundColor;
-                delete chartConfig.data.datasets[0].pointHoverBorderColor;
-                delete chartConfig.data.datasets[0].pointHoverBorderWidth;
-                break;
-                
-            case 'area':
-                chartConfig.type = 'line';
-                chartConfig.data.datasets[0].fill = true;
-                break;
-        }
-
-        chartInstance = new Chart(ctx, chartConfig);
-    }
-
     function renderSummaryAndTable(response) {
-        // Calculate summary statistics
-        let totalSubmissions = 0;
-        let peakDay = '';
-        let peakCount = 0;
-        
-        // Reset pagination
-        currentPage = 1;
-
-        // Check if we have valid data
         if (!response.data || !response.data.daily_stats) {
             console.error('Invalid response format:', response);
             return;
         }
+
+        // Calculate total submissions and find peak day
+        let totalSubmissions = 0;
+        let peakDay = null;
+        let peakCount = 0;
 
         Object.entries(response.data.daily_stats).forEach(([date, count]) => {
             totalSubmissions += count;
@@ -886,188 +730,245 @@ jQuery(document).ready(function($) {
 
         const numDays = Object.keys(response.data.daily_stats).length;
         const avgDaily = numDays > 0 ? (totalSubmissions / numDays).toFixed(2) : 0;
-        const peakDayFormatted = peakDay ? new Date(peakDay).toLocaleDateString() + ` (${peakCount})` : 'N/A';
 
-        // Update summary boxes
+        // Update summary stats
         $('#gad-total-submissions').text(totalSubmissions);
         $('#gad-average-daily').text(avgDaily);
-        $('#gad-peak-day').text(peakDayFormatted);
+        $('#gad-peak-day').text(peakDay ? `${moment(peakDay).format('MMM D, YYYY')} (${peakCount})` : 'N/A');
 
-        let tableHtml = `
-            <h3><i class="fas fa-calendar-day"></i> Daily Submissions</h3>
-            <table class="gad-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Submissions</th>
-                    </tr>
-                </thead>
-                <tbody>
+        // Add styles for both tables
+        const tableStyles = `
+            <style>
+                .gad-table-container {
+                    background: #fff;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    margin: 20px 0;
+                    padding: 20px;
+                }
+                .gad-table-container table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-bottom: 20px;
+                }
+                .gad-table-container th {
+                    background: #f8f9fa;
+                    padding: 12px;
+                    text-align: left;
+                    font-weight: 600;
+                    color: #333;
+                    border-bottom: 2px solid #dee2e6;
+                }
+                .gad-table-container td {
+                    padding: 12px;
+                    border-bottom: 1px solid #dee2e6;
+                }
+                .gad-table-container tr:hover {
+                    background-color: #f8f9fa;
+                }
+                .gad-section-title {
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: #333;
+                    margin: 30px 0 15px;
+                }
+                .gad-table-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 15px;
+                }
+                .gad-table-title {
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: #333;
+                }
+                .gad-table-actions {
+                    display: flex;
+                    gap: 10px;
+                }
+                .gad-pagination {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    gap: 15px;
+                    margin-top: 20px;
+                    padding: 10px;
+                }
+                .gad-pagination button {
+                    background: #fff;
+                    border: 1px solid #dee2e6;
+                    padding: 8px 16px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-weight: 500;
+                    color: #333;
+                    transition: all 0.2s;
+                }
+                .gad-pagination button:hover:not(:disabled) {
+                    background: #f8f9fa;
+                    border-color: #c1c9d0;
+                }
+                .gad-pagination button:disabled {
+                    background: #f8f9fa;
+                    color: #adb5bd;
+                    cursor: not-allowed;
+                }
+                .gad-pagination #page-info {
+                    font-size: 14px;
+                    color: #666;
+                    padding: 0 10px;
+                }
+            </style>
         `;
 
-        Object.entries(response.data.daily_stats).forEach(([date, count]) => {
-            const formattedDate = new Date(date).toLocaleDateString();
-            tableHtml += `
-                <tr>
-                    <td>${formattedDate}</td>
-                    <td>${count}</td>
-                </tr>
-            `;
-        });
-
-        tableHtml += `
-                </tbody>
-            </table>
-        `;
-
-        // Render users table if we have user data
-        if (response.data.users_data && response.data.users_data.length > 0) {
-            const fields = Object.keys(response.data.users_data[0]?.fields || {});
-            const firstNameIndex = fields.findIndex(field => field.toLowerCase().includes('first name'));
-            const lastNameIndex = fields.findIndex(field => field.toLowerCase().includes('last name'));
-            
-            const filteredFields = fields.filter(field => 
-                !field.toLowerCase().includes('first name') && 
-                !field.toLowerCase().includes('last name')
-            );
-
-            totalPages = Math.ceil(response.data.users_data.length / itemsPerPage);
-
-            tableHtml += `
-                <h3 style="margin-top: 30px;"><i class="fas fa-users"></i> User Submissions</h3>
-                <div class="gad-export-tools" style="margin-bottom: 15px;">
-                    <button id="gad-export-users-csv" class="gad-export-btn">
-                        <i class="fas fa-file-csv"></i> Export CSV
-                    </button>
-                    <button id="gad-export-users-pdf" class="gad-export-btn">
-                        <i class="fas fa-file-pdf"></i> Export PDF
-                    </button>
+        // Create daily leads table HTML
+        let dailyLeadsHtml = `
+            ${tableStyles}
+            <h2 class="gad-section-title">Daily Lead Count</h2>
+            <div class="gad-table-container">
+                <div class="gad-table-header">
+                    <div class="gad-table-title">
+                        Daily Submission Statistics
+                    </div>
+                    <div class="gad-table-actions">
+                        <button id="gad-export-daily-csv" class="button">
+                            <i class="fas fa-download"></i> Export CSV
+                        </button>
+                    </div>
                 </div>
-                <div class="gad-table-container" style="overflow-x: auto;">
-                    <table class="gad-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Date Submitted</th>
-                                <th>IP Address</th>
-                                <th>Name</th>
-                                ${filteredFields.map(field => `<th>${field}</th>`).join('')}
-                            </tr>
-                        </thead>
-                        <tbody id="users-table-body">
-            `;
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Number of Submissions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
 
-            // Add initial table data
-            const start = (currentPage - 1) * itemsPerPage;
-            const end = start + itemsPerPage;
-            const paginatedData = response.data.users_data.slice(start, end);
-            
-            paginatedData.forEach(user => {
-                const formattedDate = new Date(user.date_created).toLocaleString();
-                const firstName = firstNameIndex !== -1 ? (user.fields[fields[firstNameIndex]] || '') : '';
-                const lastName = lastNameIndex !== -1 ? (user.fields[fields[lastNameIndex]] || '') : '';
-                const fullName = [firstName, lastName].filter(Boolean).join(' ');
-                
-                tableHtml += `
+        // Add rows for daily stats
+        Object.entries(response.data.daily_stats)
+            .sort((a, b) => new Date(b[0]) - new Date(a[0])) // Sort by date descending
+            .forEach(([date, count]) => {
+                const formattedDate = moment(date).format('MMM D, YYYY');
+                dailyLeadsHtml += `
                     <tr>
-                        <td>${user.id}</td>
                         <td>${formattedDate}</td>
-                        <td>${user.ip}</td>
-                        <td>${fullName}</td>
-                        ${filteredFields.map(field => `<td>${user.fields[field] || ''}</td>`).join('')}
+                        <td>${count}</td>
                     </tr>
                 `;
             });
 
-            tableHtml += `
+        dailyLeadsHtml += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        // Render user submissions table if data exists
+        let userSubmissionsHtml = '';
+        if (response.data.users_data && response.data.users_data.length > 0) {
+            const fields = Object.keys(response.data.users_data[0].fields);
+            
+            // Calculate total pages
+            totalPages = Math.ceil(response.data.users_data.length / itemsPerPage);
+            currentPage = 1; // Reset to first page when new data is loaded
+
+            userSubmissionsHtml = `
+                <h2 class="gad-section-title">User Submissions</h2>
+                <div class="gad-table-container">
+                    <div class="gad-table-header">
+                        <div class="gad-table-title">
+                            Showing ${Math.min(itemsPerPage, response.data.users_data.length)} of ${response.data.users_data.length} entries
+                        </div>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Name</th>
+                                ${fields.filter(field => field !== 'Name').map(field => `<th>${field}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body">
                         </tbody>
                     </table>
-                    <div class="gad-pagination" style="margin-top: 20px; text-align: center;">
-                        <button id="prev-page" class="gad-pagination-btn" ${currentPage === 1 ? 'disabled' : ''}>
+                    <div class="gad-pagination">
+                        <button id="prev-page" class="button" ${currentPage === 1 ? 'disabled' : ''}>
                             <i class="fas fa-chevron-left"></i> Previous
                         </button>
-                        <span class="gad-page-info" style="margin: 0 15px;">
-                            Page <span id="current-page">1</span> of <span id="total-pages">${totalPages}</span>
-                        </span>
-                        <button id="next-page" class="gad-pagination-btn" ${currentPage === totalPages ? 'disabled' : ''}>
+                        <span id="page-info">Page ${currentPage} of ${totalPages}</span>
+                        <button id="next-page" class="button" ${currentPage === totalPages ? 'disabled' : ''}>
                             Next <i class="fas fa-chevron-right"></i>
                         </button>
                     </div>
                 </div>
             `;
-
-            // Add pagination styles
-            tableHtml += `
-                <style>
-                    .gad-pagination-btn {
-                        padding: 8px 15px;
-                        border: 1px solid #ddd;
-                        background: #fff;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        margin: 0 5px;
-                    }
-                    .gad-pagination-btn:disabled {
-                        opacity: 0.5;
-                        cursor: not-allowed;
-                    }
-                    .gad-pagination-btn:hover:not(:disabled) {
-                        background: #f5f5f5;
-                    }
-                    .gad-page-info {
-                        font-size: 14px;
-                        color: #666;
-                    }
-                </style>
-            `;
         }
 
-        // Update the table HTML
-        $('#gad-data-table').html(tableHtml);
+        // Combine both tables and render
+        $('#gad-data-table').html(dailyLeadsHtml + userSubmissionsHtml);
 
-        // Add event handlers if we have user data
-        if (response.data.users_data && response.data.users_data.length > 0) {
-            const fields = Object.keys(response.data.users_data[0]?.fields || {});
-            const firstNameIndex = fields.findIndex(field => field.toLowerCase().includes('first name'));
-            const lastNameIndex = fields.findIndex(field => field.toLowerCase().includes('last name'));
+        // Set up export for daily leads
+        $('#gad-export-daily-csv').on('click', function() {
+            let csvContent = "Date,Submissions\n";
+            Object.entries(response.data.daily_stats)
+                .sort((a, b) => new Date(b[0]) - new Date(a[0]))
+                .forEach(([date, count]) => {
+                    csvContent += `${date},${count}\n`;
+                });
             
-            const filteredFields = fields.filter(field => 
-                !field.toLowerCase().includes('first name') && 
-                !field.toLowerCase().includes('last name')
-            );
+            // Create and trigger download
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            
+            const formName = $('#gad-form-select option:selected').text().replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            link.setAttribute("download", `daily_leads_${formName}_${$('#gad-start-date').val()}_to_${$('#gad-end-date').val()}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
 
+        // If user submissions exist, set up their functionality
+        if (response.data.users_data && response.data.users_data.length > 0) {
+            const fields = Object.keys(response.data.users_data[0].fields);
+
+            // Function to render table rows for current page
             function renderTableRows(page) {
                 const start = (page - 1) * itemsPerPage;
                 const end = start + itemsPerPage;
                 const paginatedData = response.data.users_data.slice(start, end);
                 
-                let rowsHtml = '';
-                paginatedData.forEach(user => {
-                    const formattedDate = new Date(user.date_created).toLocaleString();
-                    const firstName = firstNameIndex !== -1 ? (user.fields[fields[firstNameIndex]] || '') : '';
-                    const lastName = lastNameIndex !== -1 ? (user.fields[fields[lastNameIndex]] || '') : '';
-                    const fullName = [firstName, lastName].filter(Boolean).join(' ');
-                    
-                    rowsHtml += `
+                return paginatedData.map(user => {
+                    const date = moment(user.date_created).format('MMM D, YYYY');
+                    return `
                         <tr>
-                            <td>${user.id}</td>
-                            <td>${formattedDate}</td>
-                            <td>${user.ip}</td>
-                            <td>${fullName}</td>
-                            ${filteredFields.map(field => `<td>${user.fields[field] || ''}</td>`).join('')}
+                            <td>${date}</td>
+                            <td>${user.fields['Name'] || ''}</td>
+                            ${fields.filter(field => field !== 'Name')
+                                .map(field => `<td>${user.fields[field] || ''}</td>`)
+                                .join('')}
                         </tr>
                     `;
-                });
-                return rowsHtml;
+                }).join('');
             }
 
+            // Function to update pagination controls
             function updatePaginationControls() {
-                $('#current-page').text(currentPage);
+                $('#page-info').text(`Page ${currentPage} of ${totalPages}`);
                 $('#prev-page').prop('disabled', currentPage === 1);
                 $('#next-page').prop('disabled', currentPage === totalPages);
+                $('.gad-table-title').text(`Showing ${Math.min(itemsPerPage, response.data.users_data.length - (currentPage - 1) * itemsPerPage)} of ${response.data.users_data.length} entries`);
             }
 
-            // Add pagination event handlers
+            // Initial render of table rows
+            $('#users-table-body').html(renderTableRows(currentPage));
+
+            // Pagination event handlers
             $('#prev-page').on('click', function() {
                 if (currentPage > 1) {
                     currentPage--;
@@ -1084,150 +985,238 @@ jQuery(document).ready(function($) {
                 }
             });
 
-            // Add export event handlers
-            $('#gad-export-users-csv').on('click', function() {
-                exportUsersToCSV(response.data.users_data, fields);
+            // Set up export buttons
+            $('#gad-export-csv').off('click').on('click', function(e) {
+                e.preventDefault();
+                if (!response.data.users_data || !response.data.users_data.length) {
+                    alert('No data available to export');
+                    return;
+                }
+
+                const fields = Object.keys(response.data.users_data[0].fields).filter(field => field !== 'Name');
+                let csvContent = "data:text/csv;charset=utf-8,";
+                csvContent += "ID,Date Submitted,Name," + fields.join(',') + "\n";
+
+                response.data.users_data.forEach(user => {
+                    const date = moment(user.date_created).format('YYYY-MM-DD HH:mm:ss');
+                    const name = user.fields['Name'] || '';
+                    const escapedName = name.includes(',') ? `"${name.replace(/"/g, '""')}"` : name;
+                    
+                    let row = [
+                        user.id,
+                        date,
+                        escapedName
+                    ];
+
+                    fields.forEach(field => {
+                        let value = user.fields[field] || '';
+                        value = value.toString().replace(/"/g, '""');
+                        row.push(value.includes(',') ? `"${value}"` : value);
+                    });
+
+                    csvContent += row.join(',') + "\n";
+                });
+
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `user_submissions_${$('#gad-form-select option:selected').text().replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${$('#gad-start-date').val()}_to_${$('#gad-end-date').val()}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
             });
 
-            $('#gad-export-users-pdf').on('click', function() {
-                exportUsersToPDF(response.data.users_data, fields);
+            $('#gad-export-pdf').off('click').on('click', function(e) {
+                e.preventDefault();
+                if (!response.data.users_data || !response.data.users_data.length) {
+                    alert('No data available to export');
+                    return;
+                }
+
+                const formName = $('#gad-form-select option:selected').text();
+                const dateRange = $('#gad-date-range').val();
+                const fields = Object.keys(response.data.users_data[0].fields).filter(field => field !== 'Name');
+
+                let printContent = `
+                    <html>
+                        <head>
+                            <title>User Submissions - ${formName}</title>
+                            <style>
+                                body { 
+                                    font-family: Arial, sans-serif; 
+                                    padding: 20px; 
+                                    color: #333;
+                                }
+                                .header { 
+                                    text-align: center; 
+                                    margin-bottom: 20px;
+                                    padding-bottom: 10px;
+                                    border-bottom: 2px solid #eee;
+                                }
+                                table { 
+                                    width: 100%; 
+                                    border-collapse: collapse; 
+                                    margin: 20px 0;
+                                    font-size: 12px;
+                                }
+                                th { 
+                                    background: #f8f9fa; 
+                                    padding: 8px;
+                                    text-align: left; 
+                                    font-weight: bold;
+                                    border: 1px solid #dee2e6;
+                                }
+                                td { 
+                                    padding: 8px;
+                                    border: 1px solid #dee2e6;
+                                }
+                                tr:nth-child(even) { 
+                                    background-color: #f9f9f9; 
+                                }
+                                .footer { 
+                                    text-align: center; 
+                                    margin-top: 20px;
+                                    font-size: 10px;
+                                    color: #666;
+                                }
+                                @media print {
+                                    body { margin: 0; padding: 10px; }
+                                    th { background-color: #f8f9fa !important; }
+                                    tr:nth-child(even) { background-color: #f9f9f9 !important; }
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="header">
+                                <h2>User Submissions Report</h2>
+                                <h3>${formName}</h3>
+                                <p>Period: ${dateRange}</p>
+                            </div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Date</th>
+                                        <th>Name</th>
+                                        ${fields.map(field => `<th>${field}</th>`).join('')}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                `;
+
+                response.data.users_data.forEach(user => {
+                    const date = moment(user.date_created).format('MMM D, YYYY HH:mm:ss');
+                    printContent += `
+                        <tr>
+                            <td>${user.id}</td>
+                            <td>${date}</td>
+                            <td>${user.fields['Name'] || ''}</td>
+                            ${fields.map(field => `<td>${user.fields[field] || ''}</td>`).join('')}
+                        </tr>
+                    `;
+                });
+
+                printContent += `
+                                </tbody>
+                            </table>
+                            <div class="footer">
+                                <p>Generated on ${moment().format('MMMM D, YYYY HH:mm:ss')} | Total Submissions: ${response.data.users_data.length}</p>
+                            </div>
+                        </body>
+                    </html>
+                `;
+
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(printContent);
+                printWindow.document.close();
+
+                // Wait for content to load before printing
+                setTimeout(() => {
+                    printWindow.print();
+                }, 500);
             });
         }
+
+        // Show results container
+        $('#gad-results-container').show();
     }
 
-    function exportUsersToCSV(usersData, fields) {
-        if (!usersData.length) return;
+    function renderChart(data) {
+        // Destroy existing chart if it exists
+        if (chartInstance) {
+            chartInstance.destroy();
+        }
 
-        // Find name-related fields
-        const firstNameIndex = fields.findIndex(field => field.toLowerCase().includes('first name'));
-        const lastNameIndex = fields.findIndex(field => field.toLowerCase().includes('last name'));
-        
-        // Filter out name fields from the regular fields
-        const filteredFields = fields.filter(field => 
-            !field.toLowerCase().includes('first name') && 
-            !field.toLowerCase().includes('last name')
-        );
-        
-        // Create CSV headers
-        let csvContent = "ID,Date Submitted,IP Address,Name," + filteredFields.join(',') + "\n";
+        // Get the canvas element
+        const ctx = document.getElementById('gad-chart').getContext('2d');
 
-        // Add data rows
-        usersData.forEach(user => {
-            const formattedDate = new Date(user.date_created).toLocaleString();
-            const firstName = firstNameIndex !== -1 ? (user.fields[fields[firstNameIndex]] || '') : '';
-            const lastName = lastNameIndex !== -1 ? (user.fields[fields[lastNameIndex]] || '') : '';
-            const fullName = [firstName, lastName].filter(Boolean).join(' ');
+        // Prepare data for the chart
+        const dates = Object.keys(data.daily_stats).sort();
+        const submissions = dates.map(date => data.daily_stats[date]);
 
-            let row = [
-                user.id,
-                formattedDate,
-                user.ip,
-                fullName,
-                ...filteredFields.map(field => {
-                    let value = user.fields[field] || '';
-                    value = value.toString().replace(/"/g, '""');
-                    return value.includes(',') ? `"${value}"` : value;
-                })
-            ];
-            csvContent += row.join(',') + "\n";
-        });
+        // Format dates for display
+        const formattedDates = dates.map(date => moment(date).format('MMM D'));
 
-        // Create and trigger download
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        
-        // Get form name for filename
-        const formName = $('#gad-form-select option:selected').text().replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        const startDate = $('#gad-start-date').val();
-        const endDate = $('#gad-end-date').val();
-        
-        link.setAttribute("download", `gravity_users_${formName}_${startDate}_to_${endDate}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    }
-
-    function exportUsersToPDF(usersData, fields) {
-        if (!usersData.length) return;
-
-        const formName = $('#gad-form-select option:selected').text();
-        const dateRange = $('#gad-date-range').val();
-
-        // Create a printable window optimized for PDF saving
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
-            <html>
-                <head>
-                    <title>User Submissions - ${formName}</title>
-                    <style>
-                        body { font-family: sans-serif; padding: 20px; }
-                        .report-container { width: 100%; }
-                        .header { text-align: center; margin-bottom: 30px; }
-                        table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; }
-                        th { background: #f1f1f1; padding: 8px; text-align: left; font-weight: bold; }
-                        td { padding: 8px; border-bottom: 1px solid #ddd; }
-                        .footer { text-align: center; margin-top: 30px; font-size: 12px; color: #777; }
-                        @media print {
-                            body { padding: 0; }
-                            th { background-color: #f1f1f1 !important; -webkit-print-color-adjust: exact; }
+        // Set up chart configuration
+        const config = {
+            type: currentChartType === 'bar' ? 'bar' : 'line',
+            data: {
+                labels: formattedDates,
+                datasets: [{
+                    label: 'Submissions',
+                    data: submissions,
+                    backgroundColor: currentChartType === 'area' ? 'rgba(54, 162, 235, 0.2)' : 'rgba(54, 162, 235, 0.8)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 2,
+                    fill: currentChartType === 'area',
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            title: function(context) {
+                                return moment(dates[context[0].dataIndex]).format('MMMM D, YYYY');
+                            }
                         }
-                    </style>
-                </head>
-                <body>
-                    <div class="report-container">
-                        <div class="header">
-                            <h1>User Submissions Report</h1>
-                            <h2>${formName}</h2>
-                            <p>Period: ${dateRange}</p>
-                        </div>
-                        
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Date Submitted</th>
-                                    <th>IP Address</th>
-                                    <th>Name</th>
-                                    ${fields.map(field => `<th>${field}</th>`).join('')}
-                                </tr>
-                            </thead>
-                            <tbody>
-        `);
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        };
 
-        usersData.forEach(user => {
-            const formattedDate = new Date(user.date_created).toLocaleString();
-            const firstName = firstNameIndex !== -1 ? (user.fields[fields[firstNameIndex]] || '') : '';
-            const lastName = lastNameIndex !== -1 ? (user.fields[fields[lastNameIndex]] || '') : '';
-            const fullName = [firstName, lastName].filter(Boolean).join(' ');
-            printWindow.document.write(`
-                <tr>
-                    <td>${user.id}</td>
-                    <td>${formattedDate}</td>
-                    <td>${user.ip}</td>
-                    <td>${fullName}</td>
-                    ${fields.map(field => `<td>${user.fields[field] || ''}</td>`).join('')}
-                </tr>
-            `);
-        });
-
-        printWindow.document.write(`
-                        </tbody>
-                    </table>
-                    
-                    <div class="footer">
-                        <p>Generated on ${new Date().toLocaleDateString()} by Gravity Analytics Dashboard</p>
-                    </div>
-                </div>
-                <script>
-                    window.onload = function() { window.print(); }
-                </script>
-            </body>
-        </html>
-    `);
-        printWindow.document.close();
+        // Create new chart instance
+        chartInstance = new Chart(ctx, config);
     }
 
     // Function to load detailed submission data

@@ -866,9 +866,27 @@ function gad_get_form_data()
                 if (!in_array($field['type'], array('html', 'section', 'page', 'captcha'))) {
                     $field_id = $field['id'];
                     $field_label = $field['label'];
-                    $field_value = isset($entry[$field_id]) ? $entry[$field_id] : '';
 
-                    $user_info['fields'][$field_label] = $field_value;
+                    // Special handling for name fields
+                    if ($field['type'] === 'name') {
+                        // Handle simple name field
+                        if (isset($entry[$field_id])) {
+                            $user_info['fields'][$field_label] = $entry[$field_id];
+                        }
+                        // Handle name field with prefix, first, middle, last, suffix
+                        else {
+                            $name_parts = array();
+                            if (isset($entry[$field_id . '.2'])) $name_parts[] = $entry[$field_id . '.2']; // First name
+                            if (isset($entry[$field_id . '.3'])) $name_parts[] = $entry[$field_id . '.3']; // Middle name
+                            if (isset($entry[$field_id . '.6'])) $name_parts[] = $entry[$field_id . '.6']; // Last name
+
+                            $user_info['fields'][$field_label] = implode(' ', array_filter($name_parts));
+                        }
+                    } else {
+                        // Handle regular fields
+                        $field_value = isset($entry[$field_id]) ? $entry[$field_id] : '';
+                        $user_info['fields'][$field_label] = $field_value;
+                    }
                 }
             }
 
