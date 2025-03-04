@@ -822,12 +822,13 @@ function gad_get_form_data()
     $search_criteria = array(
         'start_date' => $start_date,
         'end_date'   => $end_date,
+        'status'     => 'active'
     );
 
     // Add paging parameters to get all entries
     $paging = array(
         'offset'    => 0,
-        'page_size' => 10000 // Get up to 10000 entries at a time
+        'page_size' => 20000 // Increased to handle more entries
     );
 
     // Get form structure to know which fields to extract
@@ -1057,6 +1058,10 @@ function gad_send_test_report()
     $email        = isset($_POST['email']) ? sanitize_text_field($_POST['email']) : '';
     $format       = isset($_POST['format']) && is_array($_POST['format']) ? array_map('sanitize_text_field', $_POST['format']) : array();
 
+    // Get selected date range, fallback to last 7 days if not provided
+    $start_date = isset($_POST['start_date']) ? sanitize_text_field($_POST['start_date']) : date('Y-m-d', strtotime('-7 days'));
+    $end_date = isset($_POST['end_date']) ? sanitize_text_field($_POST['end_date']) : date('Y-m-d');
+
     if (! $form_id || ! $email) {
         wp_send_json_error('Missing required fields.');
     }
@@ -1082,16 +1087,21 @@ function gad_send_test_report()
         wp_send_json_error('Invalid form.');
     }
 
-    // Generate report data
-    $start_date = date('Y-m-d', strtotime('-7 days'));
-    $end_date = date('Y-m-d');
-
-    // Get submission data
+    // Get submission data with increased page size
     $search_criteria = array(
         'start_date' => $start_date,
         'end_date'   => $end_date,
+        'status'     => 'active'
     );
-    $entries = GFAPI::get_entries($form_id, $search_criteria);
+
+    // Set a large page size to get all entries
+    $paging = array(
+        'offset'    => 0,
+        'page_size' => 20000
+    );
+
+    // Get entries with paging parameters
+    $entries = GFAPI::get_entries($form_id, $search_criteria, null, $paging);
 
     // Group entries by day
     $submission_data = array();
@@ -1112,7 +1122,12 @@ function gad_send_test_report()
     $report_html = gad_generate_report_html($form, $submission_data, $format, $start_date, $end_date);
 
     // Send the email
-    $subject = sprintf('Gravity Analytics Test Report: %s', $form['title']);
+    $subject = sprintf(
+        'Gravity Analytics Report: %s (%s to %s)',
+        $form['title'],
+        date('M j, Y', strtotime($start_date)),
+        date('M j, Y', strtotime($end_date))
+    );
     $headers = array('Content-Type: text/html; charset=UTF-8');
 
     foreach ($valid_emails as $recipient) {
@@ -1170,7 +1185,11 @@ function gad_generate_report_html($form, $submission_data, $format, $start_date,
         $total_submissions += $count;
     }
 
-    $num_days = count($submission_data);
+    // Calculate average daily submissions
+    $start = new DateTime($start_date);
+    $end = new DateTime($end_date);
+    $interval = $start->diff($end);
+    $num_days = $interval->days + 1; // Include both start and end dates
     $avg_daily = $num_days > 0 ? round($total_submissions / $num_days, 2) : 0;
 
     // Find peak day
@@ -1184,13 +1203,9 @@ function gad_generate_report_html($form, $submission_data, $format, $start_date,
     }
 
     // Format the peak day
-    if ($peak_day) {
-        $peak_day_formatted = date('M j, Y', strtotime($peak_day)) . ' (' . $peak_count . ')';
-    } else {
-        $peak_day_formatted = 'N/A';
-    }
+    $peak_day_formatted = $peak_day ? date('M j, Y', strtotime($peak_day)) . ' (' . $peak_count . ')' : 'N/A';
 
-    // Start building HTML
+    // Start building HTML with improved styling
     $html = '
     <!DOCTYPE html>
     <html>
@@ -1199,86 +1214,105 @@ function gad_generate_report_html($form, $submission_data, $format, $start_date,
         <title>Gravity Analytics Report</title>
         <style>
             body {
-                font-family: sans-serif;
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
                 color: #333;
-                line-height: 1.4;
-                margin: 0;
-                padding: 0;
-            }
-            .container {
-                max-width: 600px;
+                max-width: 1000px;
                 margin: 0 auto;
                 padding: 20px;
+            }
+            .container {
+                background: #fff;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                padding: 30px;
             }
             .header {
                 text-align: center;
                 margin-bottom: 30px;
                 padding-bottom: 20px;
-                border-bottom: 1px solid #eee;
+                border-bottom: 2px solid #eee;
             }
             .header h1 {
                 color: #2271b1;
                 margin: 0 0 10px 0;
             }
+            .header h2 {
+                color: #444;
+                margin: 0 0 15px 0;
+            }
             .date-range {
                 color: #666;
-                font-style: italic;
+                font-size: 16px;
+                margin: 0;
             }
             .summary-stats {
                 display: flex;
-                justify-content: space-between;
+                justify-content: space-around;
+                margin: 30px 0;
                 flex-wrap: wrap;
-                margin-bottom: 30px;
+                gap: 20px;
             }
             .stat-box {
-                width: 30%;
-                padding: 15px;
-                border-radius: 5px;
-                background: #f9f9f9;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                background: #f8f9fa;
+                border-radius: 8px;
+                padding: 20px;
                 text-align: center;
-                margin-bottom: 15px;
+                min-width: 200px;
+                border: 1px solid #e9ecef;
             }
             .stat-box h3 {
+                color: #666;
                 margin: 0 0 10px 0;
-                color: #555;
-                font-size: 14px;
+                font-size: 16px;
             }
             .stat-box p {
-                margin: 0;
-                font-size: 20px;
+                color: #2271b1;
+                font-size: 24px;
                 font-weight: bold;
-                color: #333;
-            }
-            .chart-container {
-                margin: 30px 0;
-                text-align: center;
-            }
-            .chart-container img {
-                max-width: 100%;
-                height: auto;
+                margin: 0;
             }
             table {
                 width: 100%;
                 border-collapse: collapse;
-                margin: 30px 0;
-            }
-            table th,
-            table td {
-                padding: 10px;
-                text-align: left;
-                border-bottom: 1px solid #ddd;
+                margin: 20px 0;
+                background: #fff;
+                border: 1px solid #e9ecef;
             }
             table th {
-                background: #f1f1f1;
+                background: #f8f9fa;
+                padding: 12px;
+                text-align: left;
+                border-bottom: 2px solid #dee2e6;
+                color: #444;
+            }
+            table td {
+                padding: 12px;
+                border-bottom: 1px solid #e9ecef;
+            }
+            table tr:hover {
+                background-color: #f8f9fa;
             }
             .footer {
                 margin-top: 40px;
                 padding-top: 20px;
                 border-top: 1px solid #eee;
-                font-size: 12px;
-                color: #777;
                 text-align: center;
+                color: #666;
+                font-size: 14px;
+            }
+            .chart-container {
+                margin: 30px 0;
+                padding: 20px;
+                background: #f8f9fa;
+                border-radius: 8px;
+                text-align: center;
+            }
+            .no-data {
+                text-align: center;
+                padding: 30px;
+                color: #666;
+                font-style: italic;
             }
         </style>
     </head>
@@ -1296,11 +1330,11 @@ function gad_generate_report_html($form, $submission_data, $format, $start_date,
             <div class="summary-stats">
                 <div class="stat-box">
                     <h3>Total Submissions</h3>
-                    <p>' . $total_submissions . '</p>
+                    <p>' . number_format($total_submissions) . '</p>
                 </div>
                 <div class="stat-box">
                     <h3>Average Daily</h3>
-                    <p>' . $avg_daily . '</p>
+                    <p>' . number_format($avg_daily, 1) . '</p>
                 </div>
                 <div class="stat-box">
                     <h3>Peak Day</h3>
@@ -1309,8 +1343,7 @@ function gad_generate_report_html($form, $submission_data, $format, $start_date,
             </div>';
     }
 
-    // Include chart if requested
-    // Note: In a real implementation, you would need to generate the chart image server-side and include it
+    // Include chart placeholder if requested
     if (in_array('chart', $format)) {
         $html .= '
             <div class="chart-container">
@@ -1335,15 +1368,18 @@ function gad_generate_report_html($form, $submission_data, $format, $start_date,
         if (empty($submission_data)) {
             $html .= '
                     <tr>
-                        <td colspan="2" style="text-align: center;">No data available for the selected period.</td>
+                        <td colspan="2" class="no-data">No data available for the selected period.</td>
                     </tr>';
         } else {
+            // Sort data by date in descending order
+            krsort($submission_data);
+
             foreach ($submission_data as $date => $count) {
                 $formatted_date = date('M j, Y', strtotime($date));
                 $html .= '
                     <tr>
                         <td>' . $formatted_date . '</td>
-                        <td>' . $count . '</td>
+                        <td>' . number_format($count) . '</td>
                     </tr>';
             }
         }
@@ -1356,7 +1392,7 @@ function gad_generate_report_html($form, $submission_data, $format, $start_date,
     // Footer
     $html .= '
             <div class="footer">
-                <p>Generated on ' . date('F j, Y') . ' by Gravity Analytics Dashboard</p>
+                <p>Generated on ' . date('F j, Y \a\t g:i A') . ' by Gravity Analytics Dashboard</p>
                 <p>This is an automated report. Please do not reply to this email.</p>
             </div>
         </div>
@@ -1376,7 +1412,6 @@ function gad_send_scheduled_reports()
     $updated = false;
 
     foreach ($scheduled_reports as $id => &$report) {
-        // Check if it's time to send this report
         if (strtotime($report['next_send']) <= strtotime($now)) {
             // Get form info
             $form = GFAPI::get_form($report['form_id']);
@@ -1389,27 +1424,32 @@ function gad_send_scheduled_reports()
                 case 'weekly':
                     $start_date = date('Y-m-d', strtotime('-7 days'));
                     break;
-
                 case 'monthly':
                     $start_date = date('Y-m-d', strtotime('-1 month'));
                     break;
-
                 case 'quarterly':
                     $start_date = date('Y-m-d', strtotime('-3 months'));
                     break;
-
                 default:
                     $start_date = date('Y-m-d', strtotime('-7 days'));
             }
-
             $end_date = date('Y-m-d');
 
-            // Get submission data
+            // Get submission data with increased page size
             $search_criteria = array(
                 'start_date' => $start_date,
                 'end_date'   => $end_date,
+                'status'     => 'active'
             );
-            $entries = GFAPI::get_entries($report['form_id'], $search_criteria);
+
+            // Set a large page size to get all entries
+            $paging = array(
+                'offset'    => 0,
+                'page_size' => 20000
+            );
+
+            // Get entries with paging parameters
+            $entries = GFAPI::get_entries($report['form_id'], $search_criteria, null, $paging);
 
             // Group entries by day
             $submission_data = array();

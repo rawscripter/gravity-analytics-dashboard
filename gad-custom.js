@@ -209,6 +209,8 @@ jQuery(document).ready(function($) {
     $('#gad-send-test').on('click', function() {
         const formID = $('#gad-form-select').val();
         const email = $('#gad-report-email').val();
+        const startDate = $('#gad-start-date').val();
+        const endDate = $('#gad-end-date').val();
         
         // Get selected format options
         const formatOptions = [];
@@ -235,7 +237,9 @@ jQuery(document).ready(function($) {
                 security: gad_ajax.nonce,
                 form_id: formID,
                 email: email,
-                format: formatOptions
+                format: formatOptions,
+                start_date: startDate,
+                end_date: endDate
             },
             dataType: 'json',
             success: function(response) {
@@ -830,6 +834,7 @@ jQuery(document).ready(function($) {
                 <div class="gad-table-header">
                     <div class="gad-table-title">
                         Daily Submission Statistics
+                        <span class="gad-table-count">(Showing all entries)</span>
                     </div>
                     <div class="gad-table-actions">
                         <button id="gad-export-daily-csv" class="button">
@@ -847,7 +852,7 @@ jQuery(document).ready(function($) {
                     <tbody>
         `;
 
-        // Add rows for daily stats
+        // Add rows for daily stats without any limitation
         Object.entries(response.data.daily_stats)
             .sort((a, b) => new Date(b[0]) - new Date(a[0])) // Sort by date descending
             .forEach(([date, count]) => {
